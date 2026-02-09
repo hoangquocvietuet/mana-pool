@@ -1,0 +1,13 @@
+{
+  "name": "mana-pool",
+  "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "sharp"]
+  },
+  "scripts": {
+    "build:sdk": "pnpm --filter @mana-pool/sdk build",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "build:frontend": "pnpm --filter frontend build",
+    "build": "pnpm build:sdk && pnpm build:frontend"
+  }
+}

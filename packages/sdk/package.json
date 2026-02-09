@@ -1,0 +1,37 @@
+{
+  "name": "@mana-pool/sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "manapool": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./browser": {
+      "import": "./dist/browser.js",
+      "types": "./dist/browser.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "cli": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@mysten/sui": "^2.3.1",
+    "commander": "^13.1.0",
+    "dotenv": "^16.4.7",
+    "graphql": "link:@mysten/sui/graphql",
+    "latest": "link:@mysten/sui/graphql/schemas/latest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
