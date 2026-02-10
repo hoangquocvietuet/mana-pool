@@ -26,15 +26,18 @@ export function parseJobJson(objectId: string, fields: Record<string, unknown>):
         ? workerField
         : null;
 
-  const solutionField = fields.solution_blob_id as { vec?: (string | number[])[] } | null;
-  const solutionVal =
-    solutionField &&
-    typeof solutionField === "object" &&
-    "vec" in solutionField &&
-    solutionField.vec &&
-    solutionField.vec.length > 0
-      ? decodeVectorU8(solutionField.vec[0])
-      : null;
+  const solutionRaw = fields.solution_blob_id;
+  let solutionVal: string | null = null;
+  if (typeof solutionRaw === "string" || Array.isArray(solutionRaw)) {
+    solutionVal = decodeVectorU8(solutionRaw);
+  } else if (
+    solutionRaw &&
+    typeof solutionRaw === "object" &&
+    "vec" in solutionRaw
+  ) {
+    const vec = (solutionRaw as { vec?: (string | number[])[] }).vec;
+    if (vec && vec.length > 0) solutionVal = decodeVectorU8(vec[0]);
+  }
 
   return {
     id: objectId,
