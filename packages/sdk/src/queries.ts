@@ -4,6 +4,18 @@ import type { Job, JobPostedEvent } from "./types.js";
 import { JobStatus } from "./types.js";
 
 /**
+ * Decode a vector<u8> field from GraphQL JSON.
+ * GraphQL returns vector<u8> as a base64 string; we need to decode it
+ * back to the original UTF-8 string that was stored on-chain.
+ */
+function decodeVectorU8(field: unknown): string {
+  if (typeof field === "string") {
+    return new TextDecoder().decode(Uint8Array.from(atob(field), c => c.charCodeAt(0)));
+  }
+  return new TextDecoder().decode(new Uint8Array(field as number[]));
+}
+
+/**
  * Parse a GraphQL object (with json include) into a Job.
  */
 function parseObject(obj: { objectId: string; json: Record<string, unknown> | null }): Job | null {
@@ -18,25 +30,21 @@ function parseObject(obj: { objectId: string; json: Record<string, unknown> | nu
         ? workerField
         : null;
 
-  const solutionField = fields.solution_blob_id as { vec?: number[][] } | null;
+  const solutionField = fields.solution_blob_id as { vec?: (string | number[])[] } | null;
   const solutionVal =
     solutionField &&
     typeof solutionField === "object" &&
     "vec" in solutionField &&
     solutionField.vec &&
     solutionField.vec.length > 0
-      ? new TextDecoder().decode(new Uint8Array(solutionField.vec[0]))
+      ? decodeVectorU8(solutionField.vec[0])
       : null;
 
   return {
     id: obj.objectId,
     poster: fields.poster as string,
-    description: typeof fields.description === "string"
-      ? fields.description
-      : new TextDecoder().decode(new Uint8Array(fields.description as number[])),
-    blobId: typeof fields.blob_id === "string"
-      ? fields.blob_id
-      : new TextDecoder().decode(new Uint8Array(fields.blob_id as number[])),
+    description: decodeVectorU8(fields.description),
+    blobId: decodeVectorU8(fields.blob_id),
     bountyAmount: Number(fields.bounty ?? 0),
     status: (fields.status as number) as JobStatus,
     worker: workerVal,
