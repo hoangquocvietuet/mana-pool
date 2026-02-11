@@ -1,12 +1,10 @@
 import { getSuiClient } from "./client.js";
 import { PACKAGE_ID, MODULE_NAME } from "./constants.js";
-import type { Job, JobPostedEvent } from "./types.js";
-import { JobStatus } from "./types.js";
+import type { Job, JobPostedEvent, Proposal } from "./types.js";
+import { JobStatus, JobTag, JobCategory, SelectionMode } from "./types.js";
 
 /**
  * Decode a vector<u8> field from GraphQL JSON.
- * GraphQL returns vector<u8> as a base64 string; we need to decode it
- * back to the original UTF-8 string that was stored on-chain.
  */
 function decodeVectorU8(field: unknown): string {
   if (typeof field === "string") {
@@ -16,32 +14,37 @@ function decodeVectorU8(field: unknown): string {
 }
 
 /**
+ * Parse an Option field from GraphQL JSON.
+ */
+function parseOption<T>(field: unknown, decoder?: (v: unknown) => T): T | null {
+  if (field === null || field === undefined) return null;
+  if (typeof field === "object" && field !== null && "vec" in field) {
+    const vec = (field as { vec?: unknown[] }).vec;
+    if (vec && vec.length > 0) {
+      return decoder ? decoder(vec[0]) : (vec[0] as T);
+    }
+    return null;
+  }
+  return decoder ? decoder(field) : (field as T);
+}
+
+/**
+ * Parse proposals array from GraphQL JSON.
+ */
+function parseProposals(field: unknown): Proposal[] {
+  if (!Array.isArray(field)) return [];
+  return field.map((p: Record<string, unknown>) => ({
+    proposer: p.proposer as string,
+    solutionBlobId: decodeVectorU8(p.solution_blob_id),
+  }));
+}
+
+/**
  * Parse a GraphQL object (with json include) into a Job.
  */
 function parseObject(obj: { objectId: string; json: Record<string, unknown> | null }): Job | null {
   const fields = obj.json;
   if (!fields) return null;
-
-  const workerField = fields.worker as { vec?: string[] } | string | null;
-  const workerVal =
-    workerField && typeof workerField === "object" && "vec" in workerField
-      ? workerField.vec?.[0] ?? null
-      : typeof workerField === "string"
-        ? workerField
-        : null;
-
-  const solutionRaw = fields.solution_blob_id;
-  let solutionVal: string | null = null;
-  if (typeof solutionRaw === "string" || Array.isArray(solutionRaw)) {
-    solutionVal = decodeVectorU8(solutionRaw);
-  } else if (
-    solutionRaw &&
-    typeof solutionRaw === "object" &&
-    "vec" in solutionRaw
-  ) {
-    const vec = (solutionRaw as { vec?: (string | number[])[] }).vec;
-    if (vec && vec.length > 0) solutionVal = decodeVectorU8(vec[0]);
-  }
 
   return {
     id: obj.objectId,
@@ -50,9 +53,14 @@ function parseObject(obj: { objectId: string; json: Record<string, unknown> | nu
     blobId: decodeVectorU8(fields.blob_id),
     bountyAmount: Number(fields.bounty ?? 0),
     status: (fields.status as number) as JobStatus,
-    worker: workerVal,
-    solutionBlobId: solutionVal,
-    isUrgent: fields.is_urgent as boolean,
+    tag: (fields.tag as number) as JobTag,
+    category: (fields.category as number) as JobCategory,
+    deadline: Number(fields.deadline ?? 0),
+    selectionMode: (fields.selection_mode as number) as SelectionMode,
+    maxProposals: Number(fields.max_proposals ?? 0),
+    proposals: parseProposals(fields.proposals),
+    winner: parseOption<string>(fields.winner),
+    winningSolution: parseOption<string>(fields.winning_solution, decodeVectorU8),
   };
 }
 
@@ -106,11 +114,19 @@ export async function getOpenJobs(): Promise<Job[]> {
 }
 
 /**
- * Get all urgent open jobs.
+ * Get jobs filtered by tag.
  */
-export async function getUrgentJobs(): Promise<Job[]> {
+export async function getJobsByTag(tag: JobTag): Promise<Job[]> {
   const all = await getAllJobs();
-  return all.filter((j) => j.isUrgent && j.status === JobStatus.Open);
+  return all.filter((j) => j.tag === tag && j.status === JobStatus.Open);
+}
+
+/**
+ * Get jobs filtered by category.
+ */
+export async function getJobsByCategory(category: JobCategory): Promise<Job[]> {
+  const all = await getAllJobs();
+  return all.filter((j) => j.category === category);
 }
 
 /**
@@ -122,17 +138,17 @@ export async function getJobsByPoster(address: string): Promise<Job[]> {
 }
 
 /**
- * Get jobs claimed/completed by a specific worker.
- */
-export async function getJobsByWorker(address: string): Promise<Job[]> {
-  const all = await getAllJobs();
-  return all.filter((j) => j.worker === address);
-}
-
-/**
  * Get all completed jobs.
  */
 export async function getCompletedJobs(): Promise<Job[]> {
   const all = await getAllJobs();
   return all.filter((j) => j.status === JobStatus.Completed);
+}
+
+/**
+ * Get all refunded jobs.
+ */
+export async function getRefundedJobs(): Promise<Job[]> {
+  const all = await getAllJobs();
+  return all.filter((j) => j.status === JobStatus.Refunded);
 }

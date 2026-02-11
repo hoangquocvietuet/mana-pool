@@ -1,10 +1,12 @@
 "use client";
 
 import type { Job } from "@mana-pool/sdk/browser";
+import { JobStatus, JobTag, JobCategory, SelectionMode } from "@mana-pool/sdk/browser";
 import { useEffect, useState, useCallback } from "react";
 import { downloadFromWalrus } from "@mana-pool/sdk/browser";
-import { SubmitSolution } from "./SubmitSolution";
-import { useClaimJob } from "@/hooks/useClaimJob";
+import { ProposeSolution } from "./ProposeSolution";
+import { useSelectWinner } from "@/hooks/useSelectWinner";
+import { useRefundJob } from "@/hooks/useRefundJob";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 
 interface JobDetailModalProps {
@@ -14,23 +16,57 @@ interface JobDetailModalProps {
 
 const STATUS_LABELS: Record<number, string> = {
   0: "Open",
-  1: "Claimed",
-  2: "Completed",
+  1: "Completed",
+  2: "Refunded",
 };
+
+const TAG_LABELS: Record<number, string> = {
+  [JobTag.Urgent]: "Urgent",
+  [JobTag.Chill]: "Chill",
+};
+
+const CATEGORY_LABELS: Record<number, string> = {
+  [JobCategory.Captcha]: "Captcha",
+  [JobCategory.Crypto]: "Crypto",
+  [JobCategory.Design]: "Design",
+  [JobCategory.Data]: "Data",
+  [JobCategory.General]: "General",
+};
+
+const MODE_LABELS: Record<number, string> = {
+  [SelectionMode.FirstAnswer]: "First Answer",
+  [SelectionMode.FirstN]: "First N",
+  [SelectionMode.BestAnswer]: "Best Answer",
+};
+
+function formatDeadline(deadline: number): string {
+  const diff = deadline - Date.now();
+  if (diff <= 0) return "Expired";
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m left`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ${mins % 60}m left`;
+  return `${Math.floor(hrs / 24)}d left`;
+}
 
 export function JobDetailModal({ job, onClose }: JobDetailModalProps) {
   const [blobContent, setBlobContent] = useState<string | null>(null);
   const [blobImageUrl, setBlobImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const account = useCurrentAccount();
-  const { claimJob, isPending: isClaiming } = useClaimJob();
+  const { selectWinner, isPending: isSelecting } = useSelectWinner();
+  const { refundJob, isPending: isRefunding } = useRefundJob();
+
+  const isPoster = account?.address && job.poster === account.address;
+  const alreadyProposed = account?.address && job.proposals.some((p) => p.proposer === account.address);
+  const bountyInSui = job.bountyAmount / 1_000_000_000;
+  const deadlineExpired = job.deadline <= Date.now();
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const data = await downloadFromWalrus(job.blobId);
-        // Detect image by magic bytes
         const isPng =
           data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e;
         const isJpg = data[0] === 0xff && data[1] === 0xd8;
@@ -78,10 +114,6 @@ export function JobDetailModal({ job, onClose }: JobDetailModalProps) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
-  const isWorker =
-    job.worker && account?.address && job.worker === account.address;
-  const bountyInSui = job.bountyAmount / 1_000_000_000;
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
@@ -116,36 +148,39 @@ export function JobDetailModal({ job, onClose }: JobDetailModalProps) {
 
         {/* Header */}
         <div className="mb-6 pr-8">
-          <div className="mb-3 flex items-center gap-3">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             <span
               className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
-                job.status === 0
+                job.status === JobStatus.Open
                   ? "bg-cta/20 text-cta"
-                  : job.status === 1
-                    ? "bg-claimed/20 text-claimed"
-                    : "bg-text-muted/20 text-text-muted"
+                  : job.status === JobStatus.Completed
+                    ? "bg-text-muted/20 text-text-muted"
+                    : "bg-urgent/20 text-urgent"
               }`}
             >
               {STATUS_LABELS[job.status]}
             </span>
-            {job.isUrgent && (
-              <span className="rounded-md bg-urgent/20 px-2.5 py-1 text-xs font-semibold text-urgent">
-                URGENT
-              </span>
-            )}
+            <span className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
+              job.tag === JobTag.Urgent ? "bg-urgent/20 text-urgent" : "bg-surface-light text-text-muted"
+            }`}>
+              {TAG_LABELS[job.tag]}
+            </span>
+            <span className="rounded-md bg-surface-light px-2.5 py-1 text-xs text-text-muted">
+              {CATEGORY_LABELS[job.category]}
+            </span>
+            <span className="rounded-md bg-surface-light px-2.5 py-1 text-xs text-text-muted">
+              {MODE_LABELS[job.selectionMode]}
+            </span>
             <span className="font-heading text-lg font-bold text-cta glow-green">
               {bountyInSui} SUI
             </span>
           </div>
           <h2 className="font-heading text-xl font-bold">{job.description}</h2>
-          <p className="mt-2 text-sm text-text-muted">
-            Posted by {job.poster.slice(0, 8)}...{job.poster.slice(-6)}
-          </p>
-          {job.worker && (
-            <p className="mt-1 text-sm text-text-muted">
-              Worker: {job.worker.slice(0, 8)}...{job.worker.slice(-6)}
-            </p>
-          )}
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-text-muted">
+            <span>Posted by {job.poster.slice(0, 8)}...{job.poster.slice(-6)}</span>
+            <span>{formatDeadline(job.deadline)}</span>
+            <span>{job.proposals.length}/{job.maxProposals} proposals</span>
+          </div>
         </div>
 
         {/* Task content from Walrus */}
@@ -191,35 +226,108 @@ export function JobDetailModal({ job, onClose }: JobDetailModalProps) {
           )}
         </div>
 
-        {/* Actions */}
-        {job.status === 0 && account && (
-          <button
-            onClick={() => claimJob(job.id)}
-            disabled={isClaiming}
-            className="w-full cursor-pointer rounded-xl bg-cta py-3 text-center font-heading font-bold text-bg transition-colors duration-200 hover:bg-cta-hover disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isClaiming ? "Claiming..." : "Claim This Job"}
-          </button>
+        {/* Open job, NOT poster: Show proposal form or already-proposed notice */}
+        {job.status === JobStatus.Open && account && !isPoster && !deadlineExpired && (
+          alreadyProposed ? (
+            <div className="rounded-xl border border-cta/30 bg-cta/10 p-4 text-center">
+              <p className="text-sm font-semibold text-cta">You have already submitted a proposal for this job.</p>
+            </div>
+          ) : (
+            <ProposeSolution jobId={job.id} onSuccess={onClose} />
+          )
         )}
 
-        {job.status === 1 && isWorker && (
-          <SubmitSolution jobId={job.id} onSuccess={onClose} />
+        {/* Open job, IS poster: Show proposals list + actions */}
+        {job.status === JobStatus.Open && isPoster && (
+          <div className="space-y-4">
+            {job.proposals.length > 0 && (
+              <div className="rounded-xl border border-border bg-bg p-4">
+                <h3 className="mb-3 text-sm font-semibold text-text-muted uppercase tracking-wider">
+                  Proposals ({job.proposals.length})
+                </h3>
+                <div className="space-y-3">
+                  {job.proposals.map((proposal) => (
+                    <div
+                      key={proposal.proposer}
+                      className="flex items-center justify-between rounded-lg border border-border bg-surface p-3"
+                    >
+                      <div className="text-sm">
+                        <span className="text-text">
+                          {proposal.proposer.slice(0, 8)}...{proposal.proposer.slice(-6)}
+                        </span>
+                        <span className="ml-2 text-text-muted text-xs">
+                          blob: {proposal.solutionBlobId.slice(0, 12)}...
+                        </span>
+                      </div>
+                      <button
+                        onClick={() =>
+                          selectWinner({
+                            jobId: job.id,
+                            winnerAddress: proposal.proposer,
+                          })
+                        }
+                        disabled={isSelecting}
+                        className="cursor-pointer rounded-lg bg-cta px-3 py-1.5 text-xs font-bold text-bg transition-colors hover:bg-cta-hover disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isSelecting ? "..." : "Select Winner"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {job.proposals.length === 0 && (
+              <p className="text-center text-sm text-text-muted">
+                No proposals yet. Waiting for workers...
+              </p>
+            )}
+
+            <button
+              onClick={() => refundJob({ jobId: job.id })}
+              disabled={isRefunding}
+              className="w-full cursor-pointer rounded-xl border border-urgent/50 bg-urgent/10 py-3 text-center font-heading font-bold text-urgent transition-colors duration-200 hover:bg-urgent/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isRefunding ? "Refunding..." : "Refund Bounty"}
+            </button>
+          </div>
         )}
 
-        {job.status === 2 && job.solutionBlobId && (
+        {/* Completed: Show winner + solution */}
+        {job.status === JobStatus.Completed && (
           <div className="rounded-xl border border-cta/30 bg-cta/10 p-4">
             <h3 className="mb-2 text-sm font-semibold text-cta uppercase tracking-wider">
-              Solution Submitted
+              Winner Selected
+            </h3>
+            {job.winner && (
+              <p className="text-sm text-text">
+                Winner: {job.winner.slice(0, 8)}...{job.winner.slice(-6)}
+              </p>
+            )}
+            {job.winningSolution && (
+              <p className="mt-1 text-sm text-text-muted">
+                Solution Blob: {job.winningSolution}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Refunded */}
+        {job.status === JobStatus.Refunded && (
+          <div className="rounded-xl border border-urgent/30 bg-urgent/10 p-4">
+            <h3 className="mb-2 text-sm font-semibold text-urgent uppercase tracking-wider">
+              Job Refunded
             </h3>
             <p className="text-sm text-text-muted">
-              Blob ID: {job.solutionBlobId}
+              The bounty was returned to the poster.
             </p>
           </div>
         )}
 
-        {!account && job.status === 0 && (
+        {/* Not connected */}
+        {!account && job.status === JobStatus.Open && (
           <p className="text-center text-sm text-text-muted">
-            Connect your wallet to claim this job
+            Connect your wallet to submit a proposal
           </p>
         )}
       </div>

@@ -2,16 +2,16 @@
 
 import { useDAppKit } from "@mysten/dapp-kit-react";
 import { Transaction } from "@mysten/sui/transactions";
-import { PACKAGE_ID, MODULE_NAME, uploadToWalrus } from "@mana-pool/sdk/browser";
+import { PACKAGE_ID, MODULE_NAME, CLOCK_OBJECT_ID, uploadToWalrus } from "@mana-pool/sdk/browser";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-export function useSubmitSolution() {
+export function useProposeSolution() {
   const dAppKit = useDAppKit();
   const queryClient = useQueryClient();
   const [isPending, setIsPending] = useState(false);
 
-  const submitSolution = async ({
+  const proposeSolution = async ({
     jobId,
     solution,
   }: {
@@ -26,10 +26,11 @@ export function useSubmitSolution() {
 
       const tx = new Transaction();
       tx.moveCall({
-        target: `${PACKAGE_ID}::${MODULE_NAME}::submit_solution`,
+        target: `${PACKAGE_ID}::${MODULE_NAME}::propose_solution`,
         arguments: [
           tx.object(jobId),
           tx.pure.vector("u8", new TextEncoder().encode(solutionBlobId)),
+          tx.object(CLOCK_OBJECT_ID),
         ],
       });
 
@@ -40,5 +41,5 @@ export function useSubmitSolution() {
     }
   };
 
-  return { submitSolution, isPending };
+  return { proposeSolution, isPending };
 }

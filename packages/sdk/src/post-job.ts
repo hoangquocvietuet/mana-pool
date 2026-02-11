@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
  * Uploads task data to Walrus, then calls the Move contract to create a Job with escrowed bounty.
  */
 export async function postJob(params: PostJobParams): Promise<PostJobResult> {
-  const { description, filePath, text, bountyMist, isUrgent } = params;
+  const { description, filePath, text, bountyMist, tag, category, deadlineMinutes, selectionMode, maxProposals } = params;
 
   // Prepare data for Walrus upload
   let dataToUpload: Uint8Array;
@@ -29,6 +29,9 @@ export async function postJob(params: PostJobParams): Promise<PostJobResult> {
   const keypair = getKeypair();
   const client = getSuiClient();
 
+  // Calculate deadline as absolute timestamp in ms
+  const deadline = Date.now() + deadlineMinutes * 60 * 1000;
+
   const tx = new Transaction();
 
   // Split bounty from gas coin
@@ -39,7 +42,11 @@ export async function postJob(params: PostJobParams): Promise<PostJobResult> {
     arguments: [
       tx.pure.vector("u8", new TextEncoder().encode(description)),
       tx.pure.vector("u8", new TextEncoder().encode(blobId)),
-      tx.pure.bool(isUrgent),
+      tx.pure.u8(tag),
+      tx.pure.u8(category),
+      tx.pure.u64(deadline),
+      tx.pure.u8(selectionMode),
+      tx.pure.u64(maxProposals),
       coin,
     ],
   });

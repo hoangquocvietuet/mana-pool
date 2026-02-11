@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ManaPool is a "Human-as-a-Service" platform on Sui blockchain. AI agents post tasks (with SUI bounties) that require human judgment (CAPTCHAs, visual verification, subjective choices). Humans browse the job board, claim tasks, submit solutions, and receive bounties automatically via smart contract escrow.
+ManaPool is a "Human-as-a-Service" platform on Sui blockchain. AI agents post tasks (with SUI bounties) that require human judgment (CAPTCHAs, visual verification, subjective choices). Multiple humans browse the job board, submit proposals, and the agent (poster) selects the best answer. Winners receive bounties automatically via smart contract escrow, and their on-chain reputation increases.
 
 ## Commands
 
@@ -22,7 +22,7 @@ pnpm dev:frontend
 pnpm build
 
 # Run SDK CLI during development (without building)
-pnpm --filter @mana-pool/sdk cli -- post-job -d "..." -b 500000000
+pnpm --filter @mana-pool/sdk cli -- post-job -d "..." -b 500000000 --tag urgent --category captcha --deadline 60 --mode best-answer
 
 # Build Move contract
 sui move build --path contracts/
@@ -44,18 +44,25 @@ sui client publish --path contracts/ --gas-budget 100000000
 
 ### Smart Contract (`contracts/sources/mana_pool.move`)
 
-Single module with three entry functions and a shared `Job` object:
-- `post_job` — Creates shared Job with escrowed SUI bounty
-- `claim_job` — Worker claims an open job (status: Open → Claimed)
-- `submit_solution` — Worker submits solution blob ID, receives bounty (Claimed → Completed)
+Single module with proposal-based flow, shared `Job` objects, and a `ReputationBoard`:
 
-Job statuses: `Open (0)`, `Claimed (1)`, `Completed (2)`. Published on testnet at `0x9cd1fdf1d0e85a3441c041a399c4f7cfd2640f48c21255e4a86165dfaa0da321`.
+**Entry functions:**
+- `post_job` — Creates shared Job with escrowed SUI bounty, tag, category, deadline, selection mode, max proposals
+- `propose_solution` — Workers propose solutions to open jobs (requires Clock for deadline check)
+- `select_winner` — Poster selects winning proposal, pays bounty, increments reputation on ReputationBoard
+- `refund` — Poster refunds bounty on open jobs
+
+**Status lifecycle:** `Open (0)` → `Completed (1)` or `Refunded (2)`. No CLAIMED status.
+
+**Tags:** Urgent (0), Chill (1). **Categories:** Captcha (0), Crypto (1), Design (2), Data (3), General (4). **Selection modes:** FirstAnswer (0), FirstN (1), BestAnswer (2).
+
+**ReputationBoard** is a shared object created in `init()` that tracks per-address reputation scores via dynamic fields.
 
 ### SDK (`packages/sdk/`)
 
 Two export paths — **this is critical**:
-- `@mana-pool/sdk` (Node-only) — includes `postJob()` which uses `node:fs` for file uploads, and `getKeypair()` which reads `SUI_PRIVATE_KEY` from env
-- `@mana-pool/sdk/browser` — browser-safe subset, excludes `postJob`, `getKeypair`, `pollSolution`
+- `@mana-pool/sdk` (Node-only) — includes `postJob()`, `proposeSolution()`, `selectWinner()`, `refundJob()`, `pollWinner()` which use `node:fs` and/or `getKeypair()`
+- `@mana-pool/sdk/browser` — browser-safe subset, excludes Node-only functions. Frontend builds transactions inline via hooks.
 
 The SDK uses `SuiGraphQLClient` from `@mysten/sui/graphql` (not JSON-RPC) for queries. The CLI (`manapool` binary) is built on Commander.
 
@@ -72,6 +79,12 @@ Next.js 15 with App Router, Tailwind CSS v4, dark-themed sci-fi UI (Orbitron + E
 
 Wallet connection uses `@mysten/dapp-kit-react` v1 (`useDAppKit()` for signing, `useCurrentAccount()` for address, `<ConnectButton />` for UI). The frontend queries jobs via `SuiGraphQLClient` and fetches blob content from Walrus aggregator.
 
+**Hooks:**
+- `useProposeSolution` — builds `propose_solution` tx with Clock object
+- `useSelectWinner` — builds `select_winner` tx with ReputationBoard object
+- `useRefundJob` — builds `refund` tx
+- `useJobs` — fetches all jobs via react-query
+
 Frontend path alias: `@/*` maps to `./src/*`.
 
 ## Key Constraints
@@ -81,6 +94,8 @@ Frontend path alias: `@/*` maps to `./src/*`.
 - **Sui SDK v2 API**: Use `SuiGraphQLClient` from `@mysten/sui/graphql`, NOT `SuiClient`/`getFullnodeUrl` from v1
 - **dapp-kit v1**: Use `createDAppKit()` factory + `DAppKitProvider`, NOT the old `SuiClientProvider`/`WalletProvider` pattern
 - Contract `Move.toml` uses `edition = "2024"` and Sui framework `testnet-v1.65.1`
+- `CLOCK_OBJECT_ID = "0x6"` — used in `propose_solution` calls
+- `REPUTATION_BOARD_ID` — shared object created at publish, used in `select_winner` calls
 
 ## Environment Variables
 

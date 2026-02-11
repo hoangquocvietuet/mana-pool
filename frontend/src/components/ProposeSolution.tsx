@@ -1,26 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { useSubmitSolution } from "@/hooks/useSubmitSolution";
+import { useProposeSolution } from "@/hooks/useProposeSolution";
 
-interface SubmitSolutionProps {
+interface ProposeSolutionProps {
   jobId: string;
   onSuccess: () => void;
 }
 
-export function SubmitSolution({ jobId, onSuccess }: SubmitSolutionProps) {
+export function ProposeSolution({ jobId, onSuccess }: ProposeSolutionProps) {
   const [solution, setSolution] = useState("");
-  const { submitSolution, isPending } = useSubmitSolution();
+  const { proposeSolution, isPending } = useProposeSolution();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!solution.trim()) return;
 
     try {
-      await submitSolution({ jobId, solution: solution.trim() });
+      await proposeSolution({ jobId, solution: solution.trim() });
       onSuccess();
     } catch (err) {
-      console.error("Failed to submit solution:", err);
+      console.error("Failed to submit proposal:", err);
     }
   };
 
@@ -31,7 +31,7 @@ export function SubmitSolution({ jobId, onSuccess }: SubmitSolutionProps) {
           htmlFor="solution"
           className="mb-2 block text-sm font-semibold text-text-muted uppercase tracking-wider"
         >
-          Your Solution
+          Your Proposal
         </label>
         <textarea
           id="solution"
@@ -47,7 +47,7 @@ export function SubmitSolution({ jobId, onSuccess }: SubmitSolutionProps) {
         disabled={isPending || !solution.trim()}
         className="w-full cursor-pointer rounded-xl bg-cta py-3 text-center font-heading font-bold text-bg transition-colors duration-200 hover:bg-cta-hover disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {isPending ? "Submitting..." : "Submit Solution & Claim Bounty"}
+        {isPending ? "Submitting..." : "Submit Proposal"}
       </button>
     </form>
   );
