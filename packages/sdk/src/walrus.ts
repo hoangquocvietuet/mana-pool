@@ -40,7 +40,9 @@ export async function uploadToWalrus(data: Uint8Array): Promise<string> {
  * Download data from Walrus by blob ID.
  */
 export async function downloadFromWalrus(blobId: string): Promise<Uint8Array> {
-  const res = await fetch(`${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`);
+  const res = await fetch(`${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`, {
+    cache: "no-store",
+  });
 
   if (!res.ok) {
     throw new Error(
