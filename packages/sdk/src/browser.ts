@@ -19,6 +19,7 @@ export { PACKAGE_ID, MODULE_NAME, NETWORK, WALRUS_PUBLISHER_URL, WALRUS_AGGREGAT
 export { uploadToWalrus, downloadFromWalrus } from "./walrus.js";
 export { getSuiClient } from "./client.js";
 export { getJob, parseJobJson } from "./get-job.js";
+export { getUserReputation } from "./get-reputation.js";
 export {
   getAllJobs,
   getOpenJobs,

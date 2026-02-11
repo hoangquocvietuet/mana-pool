@@ -1,6 +1,28 @@
 "use client";
 
-import { ConnectButton } from "@mysten/dapp-kit-react";
+import { ConnectButton, useCurrentAccount } from "@mysten/dapp-kit-react";
+import { useReputation } from "@/hooks/useReputation";
+
+function ReputationBadge() {
+  const account = useCurrentAccount();
+  const { data: reputation } = useReputation(account?.address);
+
+  if (!account) return null;
+
+  return (
+    <div className="flex items-center gap-1.5 rounded-lg border border-cta/30 bg-cta/10 px-3 py-1.5 font-heading text-sm tracking-wider text-cta glow-green">
+      <svg
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        className="h-4 w-4"
+      >
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+      </svg>
+      <span>{reputation ?? 0}</span>
+      <span className="text-xs opacity-70">REP</span>
+    </div>
+  );
+}
 
 export function Header() {
   return (
@@ -26,7 +48,10 @@ export function Header() {
             MANAPOOL
           </h1>
         </div>
-        <ConnectButton />
+        <div className="flex items-center gap-3">
+          <ReputationBadge />
+          <ConnectButton />
+        </div>
       </div>
     </header>
   );

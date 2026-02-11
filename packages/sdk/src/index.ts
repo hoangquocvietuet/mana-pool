@@ -23,6 +23,7 @@ export { selectWinner } from "./select-winner.js";
 export { refundJob } from "./refund-job.js";
 export { pollWinner } from "./poll-winner.js";
 export { getJob, parseJobJson } from "./get-job.js";
+export { getUserReputation } from "./get-reputation.js";
 export {
   getAllJobs,
   getOpenJobs,
